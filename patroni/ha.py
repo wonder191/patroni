@@ -1022,6 +1022,26 @@ class Ha(object):
                     return 'not promoting because failed to update leader lock in DCS'
         else:
             logger.info('does not have lock')
+   
+            # if sync mode, sync node role change from replica to sync_standby
+            # if sync node demote, role change from sync_standby to replica 
+            # when replica promote to sync_standby, callback on_role_change( from replica to sync_standby )
+            # when sync_standby demote to replica, callback on_role_change( from sync_standby to replica )
+            sync_parm = self.cluster.config.data.get('synchronous_mode')
+            if sync_parm:
+                is_sync = self.is_sync_standby(self.dcs.get_cluster())
+                if is_sync:
+                    if self.state_handler.role == 'replica':
+                        self.state_handler.set_role('sync_standby')
+                        self.state_handler.call_nowait(ACTION_ON_ROLE_CHANGE)
+                        logger.info("role change from replica to sync_standby")
+                else:
+                    if self.state_handler.role == 'sync_standby':
+                        self.state_handler.set_role('replica')
+                        self.state_handler.call_nowait(ACTION_ON_ROLE_CHANGE)
+                        logger.info("role change from sync_standby to replica")
+                logger.info("sync mode is %s, role is %s, is_sync_node is %s", sync_parm, self.state_handler.role, is_sync)
+
         if self.is_standby_cluster():
             return self.follow('cannot be a real master in standby cluster',
                                'no action.  i am a secondary and i am following a standby leader', refresh=False)
